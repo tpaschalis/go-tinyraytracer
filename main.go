@@ -14,6 +14,11 @@ const (
 	ZAxis
 )
 
+type Light struct {
+    Position r3.Vector
+    Intensity float64
+}
+
 type Materials struct {
 	DiffusedColor color.RGBA
 }
@@ -61,17 +66,23 @@ func scene_intersect(orig, dir r3.Vector, spheres []Sphere, hit, N *r3.Vector, m
 	return spheres_dist < 1000
 }
 
-func cast_ray(orig, dir r3.Vector, spheres []Sphere) color.RGBA {
+func cast_ray(orig, dir r3.Vector, spheres []Sphere, lights []Light) color.RGBA {
 	var point, N r3.Vector
 	var material Materials
 
 	if !scene_intersect(orig, dir, spheres, &point, &N, &material) {
 		return color.RGBA{50, 180, 205, 255}
 	}
-	return material.DiffusedColor
+	//return material.DiffusedColor
+    diffuse_light_intensity := 0.0
+    for i:=0; i<len(lights); i++ {
+        light_dir := r3.Vector.Normalize(r3.Vector.Sub(lights[i].Position, point))
+        diffuse_light_intensity += lights[i].Intensity * max(0, r3.Vector.Dot(light_dir, N))
+    }
+    return multiplyColorIntensity(material.DiffusedColor, diffuse_light_intensity)
 }
 
-func render(spheres []Sphere) {
+func render(spheres []Sphere, lights []Light) {
 
 	const w = 1024.0
 	const h = 768.0
@@ -85,7 +96,7 @@ func render(spheres []Sphere) {
 			x = (2.0*(float64(i)+0.5)/w - 1.0) * math.Tan(fov/2.0) * w / h
 			y = -(2.0*(float64(j)+0.5)/h - 1.0) * math.Tan(fov/2.0)
 			dir := r3.Vector.Normalize(r3.Vector{x, y, -1.0})
-			img.Set(i, j, cast_ray(r3.Vector{0, 0, 0}, dir, spheres))
+			img.Set(i, j, cast_ray(r3.Vector{0, 0, 0}, dir, spheres, lights))
 		}
 	}
 
@@ -107,7 +118,28 @@ func main() {
 	spheres = append(spheres, Sphere{r3.Vector{1.5, -0.5, -18.0}, 3, red_rubber})
 	spheres = append(spheres, Sphere{r3.Vector{7.0, 5.0, -18.0}, 4, ivory})
 
+    lights := make([]Light, 0)
+    lights = append(lights, Light{r3.Vector{-20, 20, 20}, 1.5})
 
+	render(spheres, lights)
+}
 
-	render(spheres)
+func multiplyColorIntensity(c color.RGBA, f float64) color.RGBA {
+
+    //if f < 0 || f > 1 {
+    //    panic("Intensity not between 0 and 1")
+    //    return c
+    //}
+    return color.RGBA{uint8(float64(c.R)*f),
+                      uint8(float64(c.G)*f),
+                      uint8(float64(c.B)*f),
+                      255}
+
+}
+
+func max(a, b float64) float64 {
+    if a >= b {
+        return a
+    }
+    return b
 }
