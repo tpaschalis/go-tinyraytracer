@@ -79,6 +79,21 @@ func cast_ray(orig, dir r3.Vector, spheres []Sphere, lights []Light) color.RGBA 
     diffuse_light_intensity, specular_light_intensity := 0.0, 0.0
     for i:=0; i<len(lights); i++ {
         light_dir := r3.Vector.Normalize(r3.Vector.Sub(lights[i].Position, point))
+        light_distance := r3.Vector.Norm(r3.Vector.Sub(lights[i].Position, point))
+
+        var shadow_orig r3.Vector
+        if r3.Vector.Dot(light_dir, N) < 0 {
+            shadow_orig = r3.Vector.Sub(point, r3.Vector.Mul(N, 0.001))
+        } else {
+            shadow_orig = r3.Vector.Add(point, r3.Vector.Mul(N, 0.001))
+        }
+
+        var shadow_pt, shadow_N r3.Vector
+        var tmpmaterial Materials
+
+        if scene_intersect(shadow_orig, light_dir, spheres, &shadow_pt, &shadow_N, &tmpmaterial) && r3.Vector.Norm(r3.Vector.Sub(shadow_pt, shadow_orig)) < light_distance {
+            continue
+        }
 
         diffuse_light_intensity += lights[i].Intensity * max(0, r3.Vector.Dot(light_dir, N))
         m_light_dir := r3.Vector.Mul(light_dir, -1.)
