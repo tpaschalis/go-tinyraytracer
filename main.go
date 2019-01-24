@@ -20,7 +20,9 @@ type Light struct {
 }
 
 type Materials struct {
+    Albedo []float64
 	DiffusedColor color.RGBA
+    SpecularExponent float64
 }
 
 type Sphere struct {
@@ -74,12 +76,23 @@ func cast_ray(orig, dir r3.Vector, spheres []Sphere, lights []Light) color.RGBA 
 		return color.RGBA{50, 180, 205, 255}
 	}
 	//return material.DiffusedColor
-    diffuse_light_intensity := 0.0
+    diffuse_light_intensity, specular_light_intensity := 0.0, 0.0
     for i:=0; i<len(lights); i++ {
         light_dir := r3.Vector.Normalize(r3.Vector.Sub(lights[i].Position, point))
+
         diffuse_light_intensity += lights[i].Intensity * max(0, r3.Vector.Dot(light_dir, N))
+        m_light_dir := r3.Vector.Mul(light_dir, -1.)
+        specular_light_intensity += math.Pow( max(0., r3.Vector.Dot(r3.Vector.Mul(Reflect(m_light_dir, N), -1), dir)), material.SpecularExponent) * lights[i].Intensity
     }
-    return multiplyColorIntensity(material.DiffusedColor, diffuse_light_intensity)
+    //return multiplyColorIntensity(material.DiffusedColor, diffuse_light_intensity)
+    res1x := float64(material.DiffusedColor.R) * diffuse_light_intensity * material.Albedo[0]
+    res1y := float64(material.DiffusedColor.G) * diffuse_light_intensity * material.Albedo[0]
+    res1z := float64(material.DiffusedColor.B) * diffuse_light_intensity * material.Albedo[0]
+    black := color.RGBA{255, 255, 255, 255}
+    res2x := float64(black.R) * specular_light_intensity * material.Albedo[1]
+    res2y := float64(black.G) * specular_light_intensity * material.Albedo[1]
+    res2z := float64(black.B) * specular_light_intensity * material.Albedo[1]
+    return AddColors(r3.Vector{res1x, res1y, res1z}, r3.Vector{res2x, res2y, res2z})
 }
 
 func render(spheres []Sphere, lights []Light) {
@@ -107,10 +120,37 @@ func render(spheres []Sphere, lights []Light) {
 	fmt.Println("Hey!")
 }
 
+
+func max(a, b float64) float64 {
+    if a >= b {
+        return a
+    }
+    return b
+}
+
+func Reflect (I, N r3.Vector) r3.Vector {
+    return r3.Vector.Sub(I, r3.Vector.Mul(N,2.0*r3.Vector.Dot(I, N)))
+}
+
+func AddColors(i, j r3.Vector) color.RGBA {
+    r, g, b := i.X+j.X, i.Y+j.Y, i.Z+j.Z
+    maxc := float64(max(float64(r), max(float64(g), float64(b))))
+    if maxc > 255. {
+        return color.RGBA{uint8(float64(r)*255./maxc),
+                        uint8(float64(g)*255./maxc),
+                        uint8(float64(b)*255./maxc),
+                        255}
+    }
+    return color.RGBA{uint8(r),
+                    uint8(g),
+                    uint8(b),
+                    255}
+}
+
 func main() {
 
-	ivory := Materials{DiffusedColor: color.RGBA{100, 100, 75, 255}}
-	red_rubber := Materials{DiffusedColor: color.RGBA{75, 25, 25, 255}}
+	ivory := Materials{Albedo: []float64{0.3, 0.6}, DiffusedColor: color.RGBA{100, 100, 75, 255}, SpecularExponent: 50.}
+	red_rubber := Materials{Albedo: []float64{0.9, 0.1}, DiffusedColor: color.RGBA{75, 25, 25, 255}, SpecularExponent: 10.}
 
 	spheres := make([]Sphere, 0)
 	spheres = append(spheres, Sphere{r3.Vector{-3.0, 0.0, -16.0}, 2, ivory})
@@ -120,26 +160,16 @@ func main() {
 
     lights := make([]Light, 0)
     lights = append(lights, Light{r3.Vector{-20, 20, 20}, 1.5})
+    lights = append(lights, Light{r3.Vector{30, 50, -25}, 1.8})
+    lights = append(lights, Light{r3.Vector{30, 20, 30}, 1.7})
 
 	render(spheres, lights)
 }
 
 func multiplyColorIntensity(c color.RGBA, f float64) color.RGBA {
-
-    //if f < 0 || f > 1 {
-    //    panic("Intensity not between 0 and 1")
-    //    return c
-    //}
     return color.RGBA{uint8(float64(c.R)*f),
                       uint8(float64(c.G)*f),
                       uint8(float64(c.B)*f),
                       255}
-
 }
 
-func max(a, b float64) float64 {
-    if a >= b {
-        return a
-    }
-    return b
-}
