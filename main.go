@@ -68,13 +68,26 @@ func scene_intersect(orig, dir r3.Vector, spheres []Sphere, hit, N *r3.Vector, m
 	return spheres_dist < 1000
 }
 
-func cast_ray(orig, dir r3.Vector, spheres []Sphere, lights []Light) color.RGBA {
+func cast_ray(orig, dir r3.Vector, spheres []Sphere, lights []Light, depth int) color.RGBA {
 	var point, N r3.Vector
 	var material Materials
-
-	if !scene_intersect(orig, dir, spheres, &point, &N, &material) {
+    depth += 1
+	//if !scene_intersect(orig, dir, spheres, &point, &N, &material) {
+	//if !scene_intersect(orig, dir, spheres, &point, &N, &material) {
+    if depth>4 || !scene_intersect(orig, dir, spheres, &point, &N, &material) {
 		return color.RGBA{50, 180, 205, 255}
 	}
+
+    reflect_dir := r3.Vector.Normalize(Reflect(dir, N))
+    var reflect_orig r3.Vector
+
+    if r3.Vector.Dot(reflect_dir, N) < 0 {
+        reflect_orig = r3.Vector.Sub(point, r3.Vector.Mul(N, 0.001))
+    } else {
+        reflect_orig = r3.Vector.Add(point, r3.Vector.Mul(N, 0.001))
+    }
+    reflect_color := cast_ray(reflect_orig, reflect_dir, spheres, lights, depth)
+
 	//return material.DiffusedColor
     diffuse_light_intensity, specular_light_intensity := 0.0, 0.0
     for i:=0; i<len(lights); i++ {
@@ -107,7 +120,11 @@ func cast_ray(orig, dir r3.Vector, spheres []Sphere, lights []Light) color.RGBA 
     res2x := float64(black.R) * specular_light_intensity * material.Albedo[1]
     res2y := float64(black.G) * specular_light_intensity * material.Albedo[1]
     res2z := float64(black.B) * specular_light_intensity * material.Albedo[1]
-    return AddColors(r3.Vector{res1x, res1y, res1z}, r3.Vector{res2x, res2y, res2z})
+
+    res3x := float64(reflect_color.R) * material.Albedo[2]
+    res3y := float64(reflect_color.G) * material.Albedo[2]
+    res3z := float64(reflect_color.B) * material.Albedo[2]
+    return AddColors(r3.Vector{res1x, res1y, res1z}, r3.Vector{res2x, res2y, res2z}, r3.Vector{res3x, res3y, res3z})
 }
 
 func render(spheres []Sphere, lights []Light) {
@@ -124,7 +141,7 @@ func render(spheres []Sphere, lights []Light) {
 			x = (2.0*(float64(i)+0.5)/w - 1.0) * math.Tan(fov/2.0) * w / h
 			y = -(2.0*(float64(j)+0.5)/h - 1.0) * math.Tan(fov/2.0)
 			dir := r3.Vector.Normalize(r3.Vector{x, y, -1.0})
-			img.Set(i, j, cast_ray(r3.Vector{0, 0, 0}, dir, spheres, lights))
+			img.Set(i, j, cast_ray(r3.Vector{0, 0, 0}, dir, spheres, lights, 0))
 		}
 	}
 
@@ -147,8 +164,8 @@ func Reflect (I, N r3.Vector) r3.Vector {
     return r3.Vector.Sub(I, r3.Vector.Mul(N,2.0*r3.Vector.Dot(I, N)))
 }
 
-func AddColors(i, j r3.Vector) color.RGBA {
-    r, g, b := i.X+j.X, i.Y+j.Y, i.Z+j.Z
+func AddColors(i, j, k r3.Vector) color.RGBA {
+    r, g, b := (i.X + j.X + k.X), (i.Y + j.Y + k.Y), (i.Z + j.Z + k.Z)
     maxc := float64(max(float64(r), max(float64(g), float64(b))))
     if maxc > 255. {
         return color.RGBA{uint8(float64(r)*255./maxc),
@@ -164,14 +181,17 @@ func AddColors(i, j r3.Vector) color.RGBA {
 
 func main() {
 
-	ivory := Materials{Albedo: []float64{0.3, 0.6}, DiffusedColor: color.RGBA{100, 100, 75, 255}, SpecularExponent: 50.}
-	red_rubber := Materials{Albedo: []float64{0.9, 0.1}, DiffusedColor: color.RGBA{75, 25, 25, 255}, SpecularExponent: 10.}
+	ivory       := Materials{Albedo: []float64{0.3, 0.6, 0.1}, DiffusedColor: color.RGBA{100, 100, 75, 255}, SpecularExponent: 50.}
+	red_rubber  := Materials{Albedo: []float64{0.9, 0.1, 0.0}, DiffusedColor: color.RGBA{75, 25, 25, 255}, SpecularExponent: 10.}
+    mirror      := Materials{Albedo: []float64{0.0, 10.0, 0.8}, DiffusedColor: color.RGBA{255, 255, 255, 255}, SpecularExponent: 1425.}
 
 	spheres := make([]Sphere, 0)
 	spheres = append(spheres, Sphere{r3.Vector{-3.0, 0.0, -16.0}, 2, ivory})
-	spheres = append(spheres, Sphere{r3.Vector{-1.0, -1.5, -12.0}, 2, red_rubber})
+	spheres = append(spheres, Sphere{r3.Vector{-1.0, -1.5, -12.0}, 2, mirror})
 	spheres = append(spheres, Sphere{r3.Vector{1.5, -0.5, -18.0}, 3, red_rubber})
-	spheres = append(spheres, Sphere{r3.Vector{7.0, 5.0, -18.0}, 4, ivory})
+	spheres = append(spheres, Sphere{r3.Vector{7.0, 5.0, -18.0}, 4, mirror})
+	//spheres = append(spheres, Sphere{r3.Vector{-1.0, -1.5, -12.0}, 2, red_rubber})
+	//spheres = append(spheres, Sphere{r3.Vector{7.0, 5.0, -18.0}, 4, ivory})
 
     lights := make([]Light, 0)
     lights = append(lights, Light{r3.Vector{-20, 20, 20}, 1.5})
