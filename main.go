@@ -32,7 +32,7 @@ type Sphere struct {
 	Material Materials
 }
 
-func (s Sphere) ray_intersect(orig, dir r3.Vector, t0 *float64) bool {
+func (s Sphere) rayIntersect(orig, dir r3.Vector, t0 *float64) bool {
 	L := r3.Vector.Sub(s.Center, orig)
 	tca := r3.Vector.Dot(L, dir)
 	d2 := r3.Vector.Dot(L, L) - tca*tca
@@ -54,27 +54,27 @@ func (s Sphere) ray_intersect(orig, dir r3.Vector, t0 *float64) bool {
 	return true
 }
 
-func scene_intersect(orig, dir r3.Vector, spheres []Sphere, hit, N *r3.Vector, material *Materials) bool {
-	spheres_dist := math.MaxFloat64
-	chessboard_dist := math.MaxFloat64
+func sceneIntersect(orig, dir r3.Vector, spheres []Sphere, hit, N *r3.Vector, material *Materials) bool {
+	spheresDist := math.MaxFloat64
+	chessboardDist := math.MaxFloat64
 
 	for i := 0; i < len(spheres); i++ {
-		dist_i := 0.0
-		if spheres[i].ray_intersect(orig, dir, &dist_i) && dist_i < spheres_dist {
-			spheres_dist = dist_i
-			*hit = r3.Vector.Add(orig, r3.Vector.Mul(dir, dist_i))
+		distI := 0.0
+		if spheres[i].rayIntersect(orig, dir, &distI) && distI < spheresDist {
+			spheresDist = distI
+			*hit = r3.Vector.Add(orig, r3.Vector.Mul(dir, distI))
 			*N = r3.Vector.Normalize(r3.Vector.Sub(*hit, spheres[i].Center))
 			*material = spheres[i].Material
 			_ = material
 		}
 	}
-	//return spheres_dist < 1000
+	//return spheresDist < 1000
 	if math.Abs(dir.Y) > 0.001 {
 		d := -(orig.Y + 4.) / dir.Y // the checkerboard plane has equation y = -4
 		pt := r3.Vector.Add(orig, r3.Vector.Mul(dir, d))
 
-		if d > 0 && math.Abs(pt.X) < 10. && pt.Z < -10. && pt.Z > -30. && d < spheres_dist {
-			chessboard_dist = d
+		if d > 0 && math.Abs(pt.X) < 10. && pt.Z < -10. && pt.Z > -30. && d < spheresDist {
+			chessboardDist = d
 			*hit = pt
 			*N = r3.Vector{0, 1, 0}
 			if (int(.5*hit.X+1000)+int(.5*hit.Z))&1 == 1 {
@@ -89,82 +89,78 @@ func scene_intersect(orig, dir r3.Vector, spheres []Sphere, hit, N *r3.Vector, m
 		}
 	}
 
-	return min(spheres_dist, chessboard_dist) < 1000
+	return min(spheresDist, chessboardDist) < 1000
 
 }
 
-func cast_ray(orig, dir r3.Vector, spheres []Sphere, lights []Light, depth int) color.RGBA {
+func castRay(orig, dir r3.Vector, spheres []Sphere, lights []Light, depth int) color.RGBA {
 	var point, N r3.Vector
 	var material Materials
 	depth += 1
-	//if !scene_intersect(orig, dir, spheres, &point, &N, &material) {
-	//if !scene_intersect(orig, dir, spheres, &point, &N, &material) {
-	if depth > 4 || !scene_intersect(orig, dir, spheres, &point, &N, &material) {
+	if depth > 4 || !sceneIntersect(orig, dir, spheres, &point, &N, &material) {
+		//return color.RGBA{50, 180, 205, 255}
 		return color.RGBA{50, 180, 205, 255}
 	}
 
-	var reflect_orig r3.Vector
-	var refract_orig r3.Vector
+	var reflectOrig r3.Vector
+	var refractOrig r3.Vector
 
-	reflect_dir := r3.Vector.Normalize(Reflect(dir, N))
-	refract_dir := r3.Vector.Normalize(Refract(dir, N, material.RefractiveIndex))
+	reflectDir := r3.Vector.Normalize(Reflect(dir, N))
+	refractDir := r3.Vector.Normalize(Refract(dir, N, material.RefractiveIndex))
 
-	if r3.Vector.Dot(reflect_dir, N) < 0 {
-		reflect_orig = r3.Vector.Sub(point, r3.Vector.Mul(N, 0.001))
+	if r3.Vector.Dot(reflectDir, N) < 0 {
+		reflectOrig = r3.Vector.Sub(point, r3.Vector.Mul(N, 0.001))
 	} else {
-		reflect_orig = r3.Vector.Add(point, r3.Vector.Mul(N, 0.001))
+		reflectOrig = r3.Vector.Add(point, r3.Vector.Mul(N, 0.001))
 	}
 
-	if r3.Vector.Dot(refract_dir, N) < 0 {
-		refract_orig = r3.Vector.Sub(point, r3.Vector.Mul(N, 0.001))
+	if r3.Vector.Dot(refractDir, N) < 0 {
+		refractOrig = r3.Vector.Sub(point, r3.Vector.Mul(N, 0.001))
 	} else {
-		refract_orig = r3.Vector.Add(point, r3.Vector.Mul(N, 0.001))
+		refractOrig = r3.Vector.Add(point, r3.Vector.Mul(N, 0.001))
 	}
 
-	reflect_color := cast_ray(reflect_orig, reflect_dir, spheres, lights, depth)
-	refract_color := cast_ray(refract_orig, refract_dir, spheres, lights, depth)
+	reflectColor := castRay(reflectOrig, reflectDir, spheres, lights, depth)
+	refractColor := castRay(refractOrig, refractDir, spheres, lights, depth)
 
-	//return material.DiffusedColor
-	diffuse_light_intensity, specular_light_intensity := 0.0, 0.0
+	diffuseLightIntensity, specularLightIntensity := 0.0, 0.0
 	for i := 0; i < len(lights); i++ {
-		light_dir := r3.Vector.Normalize(r3.Vector.Sub(lights[i].Position, point))
-		light_distance := r3.Vector.Norm(r3.Vector.Sub(lights[i].Position, point))
+		lightDir := r3.Vector.Normalize(r3.Vector.Sub(lights[i].Position, point))
+		lightDistance := r3.Vector.Norm(r3.Vector.Sub(lights[i].Position, point))
 
-		var shadow_orig r3.Vector
-		if r3.Vector.Dot(light_dir, N) < 0 {
-			shadow_orig = r3.Vector.Sub(point, r3.Vector.Mul(N, 0.001))
+		var shadowOrig r3.Vector
+		if r3.Vector.Dot(lightDir, N) < 0 {
+			shadowOrig = r3.Vector.Sub(point, r3.Vector.Mul(N, 0.001))
 		} else {
-			shadow_orig = r3.Vector.Add(point, r3.Vector.Mul(N, 0.001))
+			shadowOrig = r3.Vector.Add(point, r3.Vector.Mul(N, 0.001))
 		}
 
-		var shadow_pt, shadow_N r3.Vector
+		var shadowPt, shadowN r3.Vector
 		var tmpmaterial Materials
 
-		if scene_intersect(shadow_orig, light_dir, spheres, &shadow_pt, &shadow_N, &tmpmaterial) && r3.Vector.Norm(r3.Vector.Sub(shadow_pt, shadow_orig)) < light_distance {
+		if sceneIntersect(shadowOrig, lightDir, spheres, &shadowPt, &shadowN, &tmpmaterial) && r3.Vector.Norm(r3.Vector.Sub(shadowPt, shadowOrig)) < lightDistance {
 			continue
 		}
 
-		diffuse_light_intensity += lights[i].Intensity * max(0, r3.Vector.Dot(light_dir, N))
-		m_light_dir := r3.Vector.Mul(light_dir, -1.)
-		specular_light_intensity += math.Pow(max(0., r3.Vector.Dot(r3.Vector.Mul(Reflect(m_light_dir, N), -1), dir)), material.SpecularExponent) * lights[i].Intensity
+		diffuseLightIntensity += lights[i].Intensity * max(0, r3.Vector.Dot(lightDir, N))
+		mLightDir := r3.Vector.Mul(lightDir, -1.)
+		specularLightIntensity += math.Pow(max(0., r3.Vector.Dot(r3.Vector.Mul(Reflect(mLightDir, N), -1), dir)), material.SpecularExponent) * lights[i].Intensity
 	}
-	//return multiplyColorIntensity(material.DiffusedColor, diffuse_light_intensity)
-	//fmt.Println("Material:",material)
-	res1x := float64(material.DiffusedColor.R) * diffuse_light_intensity * material.Albedo[0]
-	res1y := float64(material.DiffusedColor.G) * diffuse_light_intensity * material.Albedo[0]
-	res1z := float64(material.DiffusedColor.B) * diffuse_light_intensity * material.Albedo[0]
+	res1x := float64(material.DiffusedColor.R) * diffuseLightIntensity * material.Albedo[0]
+	res1y := float64(material.DiffusedColor.G) * diffuseLightIntensity * material.Albedo[0]
+	res1z := float64(material.DiffusedColor.B) * diffuseLightIntensity * material.Albedo[0]
 	black := color.RGBA{255, 255, 255, 255}
-	res2x := float64(black.R) * specular_light_intensity * material.Albedo[1]
-	res2y := float64(black.G) * specular_light_intensity * material.Albedo[1]
-	res2z := float64(black.B) * specular_light_intensity * material.Albedo[1]
+	res2x := float64(black.R) * specularLightIntensity * material.Albedo[1]
+	res2y := float64(black.G) * specularLightIntensity * material.Albedo[1]
+	res2z := float64(black.B) * specularLightIntensity * material.Albedo[1]
 
-	res3x := float64(reflect_color.R) * material.Albedo[2]
-	res3y := float64(reflect_color.G) * material.Albedo[2]
-	res3z := float64(reflect_color.B) * material.Albedo[2]
+	res3x := float64(reflectColor.R) * material.Albedo[2]
+	res3y := float64(reflectColor.G) * material.Albedo[2]
+	res3z := float64(reflectColor.B) * material.Albedo[2]
 
-	res4x := float64(refract_color.R) * material.Albedo[3]
-	res4y := float64(refract_color.G) * material.Albedo[3]
-	res4z := float64(refract_color.B) * material.Albedo[3]
+	res4x := float64(refractColor.R) * material.Albedo[3]
+	res4y := float64(refractColor.G) * material.Albedo[3]
+	res4z := float64(refractColor.B) * material.Albedo[3]
 
 	return AddColors(r3.Vector{res1x, res1y, res1z}, r3.Vector{res2x, res2y, res2z}, r3.Vector{res3x, res3y, res3z}, r3.Vector{res4x, res4y, res4z})
 }
@@ -183,7 +179,7 @@ func render(spheres []Sphere, lights []Light) {
 			x = (2.0*(float64(i)+0.5)/w - 1.0) * math.Tan(fov/2.0) * w / h
 			y = -(2.0*(float64(j)+0.5)/h - 1.0) * math.Tan(fov/2.0)
 			dir := r3.Vector.Normalize(r3.Vector{x, y, -1.0})
-			img.Set(i, j, cast_ray(r3.Vector{0, 0, 0}, dir, spheres, lights, 0))
+			img.Set(i, j, castRay(r3.Vector{0, 0, 0}, dir, spheres, lights, 0))
 		}
 	}
 
@@ -244,13 +240,13 @@ func main() {
 
 	ivory := Materials{RefractiveIndex: 1.0, Albedo: []float64{0.3, 0.6, 0.1, 0.0}, DiffusedColor: color.RGBA{100, 100, 75, 255}, SpecularExponent: 50.}
 	glass := Materials{RefractiveIndex: 1.5, Albedo: []float64{0.0, 0.5, 0.1, 0.8}, DiffusedColor: color.RGBA{255, 255, 255, 255}, SpecularExponent: 1425.}
-	red_rubber := Materials{RefractiveIndex: 1.0, Albedo: []float64{0.9, 0.1, 0.0, 0.0}, DiffusedColor: color.RGBA{76, 25, 25, 255}, SpecularExponent: 10.}
+	redRubber := Materials{RefractiveIndex: 1.0, Albedo: []float64{0.9, 0.1, 0.0, 0.0}, DiffusedColor: color.RGBA{76, 25, 25, 255}, SpecularExponent: 10.}
 	mirror := Materials{RefractiveIndex: 1.0, Albedo: []float64{0.0, 10.0, 0.8, 0.0}, DiffusedColor: color.RGBA{255, 255, 255, 255}, SpecularExponent: 1425.}
 
 	spheres := make([]Sphere, 0)
 	spheres = append(spheres, Sphere{r3.Vector{-3.0, 0.0, -16.0}, 2, ivory})
 	spheres = append(spheres, Sphere{r3.Vector{-1.0, -1.5, -12.0}, 2, glass})
-	spheres = append(spheres, Sphere{r3.Vector{1.5, -0.5, -18.0}, 3, red_rubber})
+	spheres = append(spheres, Sphere{r3.Vector{1.5, -0.5, -18.0}, 3, redRubber})
 	spheres = append(spheres, Sphere{r3.Vector{7.0, 5.0, -18.0}, 4, mirror})
 
 	lights := make([]Light, 0)
