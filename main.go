@@ -4,6 +4,8 @@ import "fmt"
 import "image"
 import "image/color"
 import "image/png"
+import "image/draw"
+import _ "image/jpeg"
 import "os"
 import "github.com/golang/geo/r3"
 import "math"
@@ -93,13 +95,17 @@ func sceneIntersect(orig, dir r3.Vector, spheres []Sphere, hit, N *r3.Vector, ma
 
 }
 
-func castRay(orig, dir r3.Vector, spheres []Sphere, lights []Light, depth int) color.RGBA {
+func castRay(orig, dir r3.Vector, spheres []Sphere, lights []Light, depth int, envmap image.Image) color.RGBA {
 	var point, N r3.Vector
 	var material Materials
 	depth += 1
 	if depth > 4 || !sceneIntersect(orig, dir, spheres, &point, &N, &material) {
-		//return color.RGBA{50, 180, 205, 255}
-		return color.RGBA{50, 180, 205, 255}
+		//return color.RGBA{50, 180, 205, 255}  We replace the static background color with the environment map
+		normalized := r3.Vector.Normalize(dir)
+		bounds := envmap.Bounds()
+
+		r, g, b, _ := envmap.At(int((normalized.X/2+0.5)*float64(bounds.Max.X)), int((-normalized.Y/2+0.5)*float64(bounds.Max.Y))).RGBA()
+		return color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), 255}
 	}
 
 	var reflectOrig r3.Vector
@@ -120,8 +126,8 @@ func castRay(orig, dir r3.Vector, spheres []Sphere, lights []Light, depth int) c
 		refractOrig = r3.Vector.Add(point, r3.Vector.Mul(N, 0.001))
 	}
 
-	reflectColor := castRay(reflectOrig, reflectDir, spheres, lights, depth)
-	refractColor := castRay(refractOrig, refractDir, spheres, lights, depth)
+	reflectColor := castRay(reflectOrig, reflectDir, spheres, lights, depth, envmap)
+	refractColor := castRay(refractOrig, refractDir, spheres, lights, depth, envmap)
 
 	diffuseLightIntensity, specularLightIntensity := 0.0, 0.0
 	for i := 0; i < len(lights); i++ {
@@ -165,7 +171,7 @@ func castRay(orig, dir r3.Vector, spheres []Sphere, lights []Light, depth int) c
 	return AddColors(r3.Vector{res1x, res1y, res1z}, r3.Vector{res2x, res2y, res2z}, r3.Vector{res3x, res3y, res3z}, r3.Vector{res4x, res4y, res4z})
 }
 
-func render(spheres []Sphere, lights []Light) {
+func render(spheres []Sphere, lights []Light, envmap image.Image) {
 
 	const w = 1024.0
 	const h = 768.0
@@ -179,7 +185,7 @@ func render(spheres []Sphere, lights []Light) {
 			x = (2.0*(float64(i)+0.5)/w - 1.0) * math.Tan(fov/2.0) * w / h
 			y = -(2.0*(float64(j)+0.5)/h - 1.0) * math.Tan(fov/2.0)
 			dir := r3.Vector.Normalize(r3.Vector{x, y, -1.0})
-			img.Set(i, j, castRay(r3.Vector{0, 0, 0}, dir, spheres, lights, 0))
+			img.Set(i, j, castRay(r3.Vector{0, 0, 0}, dir, spheres, lights, 0, envmap))
 		}
 	}
 
@@ -254,7 +260,24 @@ func main() {
 	lights = append(lights, Light{r3.Vector{30, 50, -25}, 1.8})
 	lights = append(lights, Light{r3.Vector{30, 20, 30}, 1.7})
 
-	render(spheres, lights)
+	f, err := os.Open("envmap.jpg")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+
+	img, format, err := image.Decode(f)
+	if err != nil {
+		panic(err)
+	}
+
+	size := img.Bounds()
+	skybox := image.NewRGBA(size)
+	draw.Draw(skybox, size, img, size.Min, draw.Src)
+	_ = img
+	_ = format
+
+	render(spheres, lights, skybox)
 }
 
 func multiplyColorIntensity(c color.RGBA, f float64) color.RGBA {
